@@ -6,7 +6,7 @@ The current label set is below.
 
 |*Name*|*Values*|*Required*|*Default*|*Function*|
 |------|--------|----------|---------|----------|
-|owner|text|Yes| |The name of who owns the machine|
+|owner|text(Puppet Username e.g jarret.lavallee)|Yes| |The name of who owns the machine|
 |geo|amer, emea, apj|Yes| |Used to determine which timezone the owner uses|
 |lifetime|indefinite, number[unit] (e.g 1w,7d,24h,10m)|Yes| |Determine how long an instance should live|
 |termination_date|year-month-day (e.g 2021-08-05)|No| |Give an end date for deleting an instance. This overrides other lifetime settings. Instances are deleted 14 days after the termination date|
