@@ -7,7 +7,7 @@ The current label set is below.
 |*Name*|*Values*|*Required*|*Default*|*Function*|
 |------|--------|----------|---------|----------|
 |owner|text(Puppet Username replacing any dots by underscores e.g jarret_lavallee)|Yes| |The name of who owns the machine|
-|geo|amer, emea, apj|Yes| |Used to determine which timezone the owner uses|
+|geo|amer, emea, apj|Yes| |Used to determine which timezone the owner uses. The timezones are local to where the office is in each geo, e.g AMER uses pacific time|
 |lifetime|indefinite, number[unit] (e.g 1w,7d,24h,10m)|Yes| |Determine how long an instance should live|
 |termination_date|year-month-day (e.g 2021-08-05)|No| |Give an end date for deleting an instance. This overrides other lifetime settings. Instances are deleted 14 days after the termination date|
 |runschedule|weekdays, daily, continuous|No|weekdays|When an instance should be running. It will be stopped when not in the workhours for the days. `weekdays` are Monday-Friday, `daily` is every day, and `continuous` machines run 24/7|
