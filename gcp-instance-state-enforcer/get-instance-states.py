@@ -182,7 +182,7 @@ def should_be_started(gcp_instance):
 
     This method returns a boolean and a reason if the instance should be
     started.
-    """    
+    """
     autostart = get_label(gcp_instance, AUTOSTART_LABEL)
     if autostart is None or autostart.lower() != 'true':
         return (False, 'No configuration for starting')
@@ -201,7 +201,7 @@ def should_be_started(gcp_instance):
     runschedule = get_label(gcp_instance, RUNSCHEDULE_LABEL)
     workhours = get_label(gcp_instance, WORKHOURS_LABEL)
     geo  = get_label(gcp_instance, GEO_LABEL)
-    
+
     if is_current_worktime(get_workhours_times(workhours), geo, runschedule):
         stopped_until = get_label(gcp_instance, STOPPED_UNTIL_LABEL)
         if stopped_until is not None:
@@ -229,7 +229,7 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
     """
     launch_date = get_iso_date(gcp_instance['creationTimestamp'])
     timenow = timenow_with_utc()
-    
+
     try:
         required_labels_present(gcp_instance)
     except ValueError as e:
@@ -237,7 +237,7 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
             # Timed out waiting for a label, so go ahead and delete this instance.
             return (launch_date, 'Invalid or missing labels after wait_time')
         return (None, 'Waiting for labels to propagate')
-    
+
     disabled = get_label(gcp_instance, DISABLED_LABEL)
     if disabled is not None and disabled.lower() == 'true':
         return (timenow - timedelta(minutes=5), 'Disabled')
