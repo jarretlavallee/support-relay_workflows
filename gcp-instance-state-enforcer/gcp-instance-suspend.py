@@ -11,8 +11,13 @@ def slice(orig, keys):
 
 def do_suspend_instance(compute, project_id, zone, name):
     print('suspending instance {0}'.format(name))
-    result = compute.instances().suspend(project=project_id, zone=zone, instance=name).execute()
-    return result['items'] if 'items' in result else []
+    try:
+        result = compute.instances().suspend(project=project_id, zone=zone, instance=name).execute()
+        return result['items'] if 'items' in result else []
+    except Exception as e:
+        print('GCP instance {0} failed to suspend. Shutting down. Exception: {1}'.format(name, e))
+        result = compute.instances().stop(project=project_id, zone=zone, instance=name).execute()
+        return result['items'] if 'items' in result else []
 
 def suspend_instances(instances):
     # For security purposes we whitelist the keys that can be fed in to the
