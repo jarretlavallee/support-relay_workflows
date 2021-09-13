@@ -58,7 +58,7 @@ def get_label(gcp_instance, label_name):
     or if the label is not found. If the tag is found, it returns the label
     value.
     """
-    if gcp_instance['labels'] is None:
+    if 'labels' not in gcp_instance.keys() or gcp_instance['labels'] is None:
         return None
 
     return gcp_instance['labels'][label_name] if label_name in gcp_instance['labels'] else None
