@@ -136,8 +136,8 @@ def is_current_worktime(worktime_match, geo, runschedule):
         return True
 
     timezone = TIMEZONES[geo]
-    starttime = datetime.time(worktime_match[0])
-    endtime = datetime.time(worktime_match[1])
+    starttime = datetime.time(worktime_match[0] % 24)
+    endtime = datetime.time(worktime_match[1] % 24)
     current_tz_date = dt.now(ZoneInfo(timezone))
     if is_time_between(starttime, endtime, current_tz_date.time()):
         if runschedule.lower() == 'daily':
