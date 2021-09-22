@@ -18,7 +18,7 @@ triggers:
 - name: Hourly us-west1-b
   source:
     type: schedule
-    schedule: '2 * * * *'
+    schedule: '1 * * * *'
   binding:
     parameters:
       zone: us-west1-b
@@ -26,7 +26,7 @@ triggers:
 - name: Hourly us-west1-c
   source:
     type: schedule
-    schedule: '3 * * * *'
+    schedule: '1 * * * *'
   binding:
     parameters:
       zone: us-west1-c
@@ -45,30 +45,37 @@ parameters:
   terminateDays:
     description: The number of days before an invalid machine is terminated
     default: 14
+  slackUsername:
+    description: The username of the slack notifications
+    default: Support Relay Notifications
+  slackChannel:
+    description: The channel to notify
+    default: '#team-support-gcp-notifications'
 
 steps:
 - name: list-instances
   image: relaysh/gcp-step-instance-list
   spec:
     google: &google
-      service_account_info: !Connection { type: gcp, name: my-gcp-account }
-      zone: !Parameter zone
+      service_account_info: ${connections.gcp.'my-gcp-account' }
+      zone: ${parameters.zone}
 
 - name: identify-instance-states
   image: relaysh/core:latest-python
   spec:
-    instances: !Output {from: list-instances, name: instances}
-    requiredLabels: !Parameter requiredLabels
-    terminateDays: !Parameter terminateDays
+    instances: ${outputs.'list-instances'.instances}
+    requiredLabels: ${parameters.requiredLabels}
+    terminateDays: ${parameters.terminateDays}
 # The current version of this script can be found in the `raw` link at https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/43daa5f1af036ae030b16a618dd00d6ba46abfaa/get-instance-states.py
+  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/186afeb7e5979748985a5d01038de952eef94035/get-instance-states.py
 
 - name: stop-instances
+  when: ${outputs.'identify-instance-states'.to_terminate != []}
   dependsOn: identify-instance-states
   image: relaysh/gcp-step-instance-stop
   spec:
     google: *google
-    instances: !Output {from: identify-instance-states, name: to_terminate}
+    instances: ${outputs.'identify-instance-states'.to_terminate}
 
 ## Disabled until further testing has been done
 # - name: delete-instances
@@ -79,26 +86,45 @@ steps:
 #   spec:
 #     google: *google
 #     instances: !Output {from: identify-instance-states, name: to_delete}
-
-- name: start-instances
-  dependsOn: identify-instance-states
-  image: relaysh/gcp-step-instance-start
-  spec:
-    google: *google
-    instances: !Output {from: identify-instance-states, name: to_start}
-
-- name: resume-instances
-  dependsOn: identify-instance-states
-  image: relaysh/gcp-step-instance-start
-  spec:
-    google: *google
-    instances: !Output {from: identify-instance-states, name: to_resume}
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/43daa5f1af036ae030b16a618dd00d6ba46abfaa/gcp-instance-resume.py
-
-- name: suspend-instances
+- name: stop-to-delete-instances
+  when: ${outputs.'identify-instance-states'.to_delete != []}
   dependsOn: identify-instance-states
   image: relaysh/gcp-step-instance-stop
   spec:
     google: *google
-    instances: !Output {from: identify-instance-states, name: to_suspend}
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/43daa5f1af036ae030b16a618dd00d6ba46abfaa/gcp-instance-suspend.py
+    instances: ${outputs.'identify-instance-states'.to_delete}
+
+- name: start-instances
+  when: ${outputs.'identify-instance-states'.to_start != []}
+  dependsOn: identify-instance-states
+  image: relaysh/gcp-step-instance-start
+  spec:
+    google: *google
+    instances: ${outputs.'identify-instance-states'.to_start}
+
+- name: resume-instances
+  when: ${outputs.'identify-instance-states'.to_resume != []}
+  dependsOn: identify-instance-states
+  image: relaysh/gcp-step-instance-start
+  spec:
+    google: *google
+    instances: ${outputs.'identify-instance-states'.to_resume}
+  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/186afeb7e5979748985a5d01038de952eef94035/gcp-instance-resume.py
+
+- name: suspend-instances
+  when: ${outputs.'identify-instance-states'.to_suspend != []}
+  dependsOn: identify-instance-states
+  image: relaysh/gcp-step-instance-stop
+  spec:
+    google: *google
+    instances: ${outputs.'identify-instance-states'.to_suspend}
+  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/186afeb7e5979748985a5d01038de952eef94035/gcp-instance-suspend.py
+
+- name: slack-notification
+  image: relaysh/slack-step-message-send
+  when: ${outputs.'identify-instance-states'.slack_block != '[]'}
+  spec:
+    channel: ${parameters.slackChannel}
+    connection: ${connections.slack.'support-relay-notifications-test'}
+    blocks: ${outputs.'identify-instance-states'.slack_block}
+    username: ${parameters.slackUsername}
