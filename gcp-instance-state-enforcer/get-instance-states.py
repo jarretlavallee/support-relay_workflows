@@ -285,6 +285,11 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
     else:
         return (get_iso_date(termination_date), 'Scheduled for termination on {0}'.format(get_iso_date(termination_date)))
 
+def chunk_list(lst, n):
+    """Yield successive n-sized chunks from lst."""
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
 def states_to_slack_block(states):
     """
     :param states a hash of the various states with instances and reasons
@@ -298,7 +303,7 @@ def states_to_slack_block(states):
             continue
 
         blocks.append({"type": "divider"})
-        section = {
+        section_header = {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
@@ -315,17 +320,24 @@ def states_to_slack_block(states):
                 }
             ]
         }
-        for instance, reason in instances.items():
-            section['fields'].append({
-                "type": "plain_text",
-                "text": instance
-            })
-            section['fields'].append({
-                "type": "plain_text",
-                "text": reason
-            })
+        blocks.append(section_header)
 
-        blocks.append(section)
+        for inst in chunk_list(list(instances.items()), 10):
+            section = {
+                "type": "section",
+                "fields": []
+            }
+            for instance, reason in inst:
+                section['fields'].append({
+                    "type": "plain_text",
+                    "text": instance
+                })
+                section['fields'].append({
+                    "type": "plain_text",
+                    "text": reason
+                })
+            blocks.append(section)
+
     return json.dumps(blocks)
 
 if __name__ == '__main__':
@@ -335,11 +347,11 @@ if __name__ == '__main__':
     to_start = []
     to_resume = []
     states = {
-        "delete": {},
-        "terminate": {},
-        "suspend": {},
-        "start": {},
-        "resume": {},
+        "deleting": {},
+        "stopping": {},
+        "suspending": {},
+        "starting": {},
+        "resuming": {},
         "error": {}
     }
 
@@ -351,15 +363,15 @@ if __name__ == '__main__':
             if termination_date is not None:
                 if timenow > termination_date + timedelta(days=TERMINATE_DAYS):
                     to_delete.append(instance)
-                    states['delete'][instance['name']] = reason
+                    states['deleting'][instance['name']] = reason
                     print('Deleting GCP instance {0}: {1}'.format(instance['name'], reason))
                 elif termination_date < timenow:
                     if get_label(instance, SHUTDOWN_TYPE_LABEL) == 'suspend':
                         to_suspend.append(instance)
-                        states['suspend'][instance['name']] = reason
+                        states['suspending'][instance['name']] = reason
                     else:
                         to_terminate.append(instance)
-                        states['terminate'][instance['name']] = reason
+                        states['stopping'][instance['name']] = reason
                     print('Stopping GCP instance {0}: {1}'.format(instance['name'], reason))
                 else:
                     print('GCP instance {0} will be considered for stopping at {1}'.format(instance['name'], termination_date))
@@ -376,10 +388,10 @@ if __name__ == '__main__':
             if should_start:
                 if instance['status'] == 'SUSPENDED':
                     to_resume.append(instance)
-                    states['resume'][instance['name']] = reason
+                    states['resuming'][instance['name']] = reason
                 else:
                     to_start.append(instance)
-                    states['start'][instance['name']] = reason
+                    states['starting'][instance['name']] = reason
                 print('Starting GCP instance {0}: {1}'.format(instance['name'], reason))
         except Exception as e:
             states['error'][instance['name']] = e
