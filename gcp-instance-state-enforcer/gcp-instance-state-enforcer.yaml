@@ -18,7 +18,7 @@ triggers:
 - name: Hourly us-west1-b
   source:
     type: schedule
-    schedule: '2 * * * *'
+    schedule: '1 * * * *'
   binding:
     parameters:
       zone: us-west1-b
@@ -26,7 +26,7 @@ triggers:
 - name: Hourly us-west1-c
   source:
     type: schedule
-    schedule: '3 * * * *'
+    schedule: '1 * * * *'
   binding:
     parameters:
       zone: us-west1-c
@@ -45,6 +45,12 @@ parameters:
   terminateDays:
     description: The number of days before an invalid machine is terminated
     default: 14
+  slackUsername:
+    description: The username of the slack notifications
+    default: Support Relay Notifications
+  slackChannel:
+    description: The channel to notify
+    default: '#team-support-gcp-notifications'
 
 steps:
 - name: list-instances
@@ -61,7 +67,7 @@ steps:
     requiredLabels: !Parameter requiredLabels
     terminateDays: !Parameter terminateDays
 # The current version of this script can be found in the `raw` link at https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/43daa5f1af036ae030b16a618dd00d6ba46abfaa/get-instance-states.py
+  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/f8334f2976f99a2894ef23ad76162d3b00d70b0e/get-instance-states.py
 
 - name: stop-instances
   dependsOn: identify-instance-states
@@ -101,4 +107,13 @@ steps:
   spec:
     google: *google
     instances: !Output {from: identify-instance-states, name: to_suspend}
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/43daa5f1af036ae030b16a618dd00d6ba46abfaa/gcp-instance-suspend.py
+  inputFile: https://gist.githubusercontent.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/e18713a2b2bbea3caf6bd16c6502dbb45d995a03/gcp-instance-suspend.py
+
+- name: slack-notification
+  image: relaysh/slack-step-message-send
+  when: ${outputs.'identify-instance-states'.slack_block != '[]'}
+  spec:
+    channel: !Parameter slackChannel
+    connection: !Connection { type: slack, name: support-relay-notifications-test }
+    blocks: ${outputs.'identify-instance-states'.slack_block}
+    username: !Parameter slackUsername

@@ -191,16 +191,26 @@ def should_be_started(gcp_instance):
     if disabled is not None and disabled.lower() == 'true':
         return (False, 'Disabled')
 
-
-
     try:
         required_labels_present(gcp_instance)
     except ValueError as e:
         return (False, 'Not starting: {0}'.format(e))
 
+    timenow = timenow_with_utc()
     runschedule = get_label(gcp_instance, RUNSCHEDULE_LABEL)
     workhours = get_label(gcp_instance, WORKHOURS_LABEL)
     geo  = get_label(gcp_instance, GEO_LABEL)
+
+    launch_date = get_iso_date(gcp_instance['creationTimestamp'])
+    lifetime = get_label(gcp_instance, LIFETIME_LABEL)
+    if lifetime is not None and lifetime != INDEFINITE:
+        lifetime_match = validate_lifetime_value(lifetime)
+        try:
+            end_date = launch_date + calculate_lifetime_delta(lifetime_match)
+            if end_date < timenow:
+                return (False, 'Lifetime elapsed on {0}'.format(end_date))
+        except ValueError as e:
+            return (False, 'Invalid lifetime label value: {0}'.format(e))
 
     if is_current_worktime(get_workhours_times(workhours), geo, runschedule):
         stopped_until = get_label(gcp_instance, STOPPED_UNTIL_LABEL)
@@ -267,7 +277,7 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
                 return (launch_date, 'Invalid lifetime label value')
             try:
                 end_date = launch_date + calculate_lifetime_delta(lifetime_match)
-                return (end_date, 'Lifetime elapsed. Scheduled for termination on {0}'.format(end_date))
+                return (end_date, 'Lifetime elapsed on {0}'.format(end_date))
             except ValueError as e:
                 return (launch_date, 'Invalid lifetime label value: {0}'.format(e))
     elif termination_date == INDEFINITE:
@@ -275,6 +285,48 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
     else:
         return (get_iso_date(termination_date), 'Scheduled for termination on {0}'.format(get_iso_date(termination_date)))
 
+def states_to_slack_block(states):
+    """
+    :param states a hash of the various states with instances and reasons
+
+    Converts the states into a slack consumable block
+    """
+    blocks = []
+
+    for state, instances in states.items():
+        if not bool(instances):
+            continue
+
+        blocks.append({"type": "divider"})
+        section = {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*{0}*".format(state.capitalize())
+            },
+            "fields": [
+                {
+                    "type": "mrkdwn",
+                    "text": "*Instance*"
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": "*Reason*"
+                }
+            ]
+        }
+        for instance, reason in instances.items():
+            section['fields'].append({
+                "type": "plain_text",
+                "text": instance
+            })
+            section['fields'].append({
+                "type": "plain_text",
+                "text": reason
+            })
+
+        blocks.append(section)
+    return json.dumps(blocks)
 
 if __name__ == '__main__':
     to_terminate = []
@@ -282,7 +334,14 @@ if __name__ == '__main__':
     to_delete = []
     to_start = []
     to_resume = []
-
+    states = {
+        "delete": {},
+        "terminate": {},
+        "suspend": {},
+        "start": {},
+        "resume": {},
+        "error": {}
+    }
 
     running_instances = filter(lambda i: i['status'] == 'RUNNING', INSTANCES)
     timenow = timenow_with_utc()
@@ -292,18 +351,22 @@ if __name__ == '__main__':
             if termination_date is not None:
                 if timenow > termination_date + timedelta(days=TERMINATE_DAYS):
                     to_delete.append(instance)
+                    states['delete'][instance['name']] = reason
                     print('Deleting GCP instance {0}: {1}'.format(instance['name'], reason))
                 elif termination_date < timenow:
                     if get_label(instance, SHUTDOWN_TYPE_LABEL) == 'suspend':
                         to_suspend.append(instance)
+                        states['suspend'][instance['name']] = reason
                     else:
                         to_terminate.append(instance)
+                        states['terminate'][instance['name']] = reason
                     print('Stopping GCP instance {0}: {1}'.format(instance['name'], reason))
                 else:
                     print('GCP instance {0} will be considered for stopping at {1}'.format(instance['name'], termination_date))
             else:
                 print('GCP instance {0} not considered for stopping : {1}'.format(instance['name'], reason))
         except Exception as e:
+            states['error'][instance['name']] = e
             print('GCP instance {0} not considered for stopping because of a processing error: {1}'.format(instance['name'], e))
 
     stopped_instances = filter(lambda i: i['status'] == 'TERMINATED' or i['status'] == 'SUSPENDED', INSTANCES)
@@ -313,14 +376,19 @@ if __name__ == '__main__':
             if should_start:
                 if instance['status'] == 'SUSPENDED':
                     to_resume.append(instance)
+                    states['resume'][instance['name']] = reason
                 else:
                     to_start.append(instance)
+                    states['start'][instance['name']] = reason
                 print('Starting GCP instance {0}: {1}'.format(instance['name'], reason))
         except Exception as e:
+            states['error'][instance['name']] = e
             print('GCP instance {0} not considered for starting because of a processing error: {1}'.format(instance['name'], e))
+
 
     relay.outputs.set('to_terminate', to_terminate)
     relay.outputs.set('to_suspend', to_suspend)
     relay.outputs.set('to_delete', to_delete)
     relay.outputs.set('to_start', to_start)
     relay.outputs.set('to_resume', to_resume)
+    relay.outputs.set('slack_block', states_to_slack_block(states))
