@@ -322,7 +322,7 @@ def states_to_slack_block(states):
         }
         blocks.append(section_header)
 
-        for inst in chunk_list(list(instances.items()), 10):
+        for inst in chunk_list(list(instances.items()), 5):
             section = {
                 "type": "section",
                 "fields": []
