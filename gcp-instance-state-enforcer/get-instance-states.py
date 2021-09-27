@@ -103,6 +103,8 @@ def calculate_lifetime_delta(lifetime_tuple):
         return timedelta(days=length)
     elif unit == 'm':
         return timedelta(minutes=length)
+    elif unit == 'y':
+        return timedelta(weeks=length*52)
     else:
         raise ValueError("Unable to parse the unit '{0}'".format(unit))
 
@@ -378,7 +380,7 @@ if __name__ == '__main__':
             else:
                 print('GCP instance {0} not considered for stopping : {1}'.format(instance['name'], reason))
         except Exception as e:
-            states['error'][instance['name']] = e
+            states['error'][instance['name']] = 'ERROR: {0}'.format(e)
             print('GCP instance {0} not considered for stopping because of a processing error: {1}'.format(instance['name'], e))
 
     stopped_instances = filter(lambda i: i['status'] == 'TERMINATED' or i['status'] == 'SUSPENDED', INSTANCES)
@@ -394,7 +396,7 @@ if __name__ == '__main__':
                     states['starting'][instance['name']] = reason
                 print('Starting GCP instance {0}: {1}'.format(instance['name'], reason))
         except Exception as e:
-            states['error'][instance['name']] = e
+            states['error'][instance['name']] = 'ERROR: {0}'.format(e)
             print('GCP instance {0} not considered for starting because of a processing error: {1}'.format(instance['name'], e))
 
 
@@ -403,4 +405,8 @@ if __name__ == '__main__':
     relay.outputs.set('to_delete', to_delete)
     relay.outputs.set('to_start', to_start)
     relay.outputs.set('to_resume', to_resume)
-    relay.outputs.set('slack_block', states_to_slack_block(states))
+    try:
+        relay.outputs.set('slack_block', states_to_slack_block(states))
+    except Exception as e:
+        print('Unable to print slack_block: {0} , {1}'.format(states, e))
+        relay.outputs.set('slack_block', '[]')
