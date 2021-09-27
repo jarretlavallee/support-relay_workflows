@@ -78,7 +78,7 @@ def validate_lifetime_value(lifetime_value):
     Return a match object if a match is found; otherwise, return the None from
     the search method.
     """
-    search_result = re.search(r'^([0-9]+)(w|d|h|m)$', lifetime_value)
+    search_result = re.search(r'^([0-9]+)(w|d|h|m|y)$', lifetime_value)
     if search_result is None:
         return None
     toople = search_result.groups()
@@ -95,6 +95,8 @@ def calculate_lifetime_delta(lifetime_tuple):
     """
     length = lifetime_tuple[0]
     unit = lifetime_tuple[1]
+    if unit is None:
+        raise ValueError("Unable to parse the lifetime unit")
     if unit == 'w':
         return timedelta(weeks=length)
     elif unit == 'h':
@@ -102,11 +104,11 @@ def calculate_lifetime_delta(lifetime_tuple):
     elif unit == 'd':
         return timedelta(days=length)
     elif unit == 'm':
-        return timedelta(minutes=length)
+        return timedelta(weeks=length*5)
     elif unit == 'y':
         return timedelta(weeks=length*52)
     else:
-        raise ValueError("Unable to parse the unit '{0}'".format(unit))
+        raise ValueError("Unable to parse the lifetime unit '{0}'".format(unit))
 
 def get_iso_date(data):
     for fmt in (r'%Y-%m-%dT%H:%M:%S.%f%z', r'%Y-%m-%dT%H:%M:%S%z', r'%Y-%m-%d'):

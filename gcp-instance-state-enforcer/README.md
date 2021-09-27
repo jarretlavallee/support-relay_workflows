@@ -8,7 +8,7 @@ The current label set is below.
 |------|--------|--------|----------|----------|---------|----------|
 |owner|User name with underscores|String[1] Puppet User name replacing any dots by underscores|jarret_lavallee|Yes| |The name of who owns the machine|
 |geo|amer, emea, apj|Enum[amer, emea, apj]|amer|Yes| |Used to determine which timezone the owner uses. The timezones are local to where the office is in each geo. apj: Asia/Singapore, emea: Europe/Belfast, amer: America/Los_Angeles|
-|lifetime|indefinite, number[unit]|String[2] minute(m), hour(h), days(d), weeks(w)|e.g 1w,7d,24h,10m,indefinite|Yes| |Determine how long an instance should live. Currently only used to shut down the machine.|
+|lifetime|indefinite, number[unit]|String[2] hour(h), days(d), weeks(w), months(m), years(y)|e.g 1y,5m,1w,7d,24h,indefinite|Yes| |Determine how long an instance should live. Currently only used to shut down the machine.|
 |termination_date|year-month-day|String[5]|2021-12-01|No| |Give an end date for deleting an instance. This overrides other lifetime settings. Instances will eventually deleted 14 days after the termination date. Currently this only shuts the machine down.|
 |runschedule|weekdays, daily, continuous|Enum[weekdays, daily, continuous]|daily|No|weekdays|When an instance should be running. It will be stopped when not in the `workhours` for the days. `weekdays` are Monday-Friday, `daily` is every day, and `continuous` machines run 24/7|
 |workhours|starthour-endhour|Hour range 0 to 23|9-18|No|7-18|Which hours should the instance be on line for in 24 hour time. This is in the local time to the `geo`|
