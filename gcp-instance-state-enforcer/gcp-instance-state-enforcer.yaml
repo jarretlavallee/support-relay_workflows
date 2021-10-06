@@ -57,7 +57,7 @@ steps:
   image: relaysh/gcp-step-instance-list
   spec:
     google: &google
-      service_account_info: ${connections.gcp.'my-gcp-account' }
+      service_account_info: ${connections.gcp.'customer-support-scratchpad' }
       zone: ${parameters.zone}
 
 - name: identify-instance-states
@@ -67,7 +67,7 @@ steps:
     requiredLabels: ${parameters.requiredLabels}
     terminateDays: ${parameters.terminateDays}
 # The current version of this script can be found in the `raw` link at https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/186afeb7e5979748985a5d01038de952eef94035/get-instance-states.py
+  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/184aa956fa681b82e80b081e0ccb00c1af6aabe0/get-instance-states.py
 
 - name: stop-instances
   when: ${outputs.'identify-instance-states'.to_terminate != []}
@@ -125,6 +125,6 @@ steps:
   when: ${outputs.'identify-instance-states'.slack_block != '[]'}
   spec:
     channel: ${parameters.slackChannel}
-    connection: ${connections.slack.'support-relay-notifications-test'}
+    connection: ${connections.slack.'support-relay-notifications'}
     blocks: ${outputs.'identify-instance-states'.slack_block}
     username: ${parameters.slackUsername}
