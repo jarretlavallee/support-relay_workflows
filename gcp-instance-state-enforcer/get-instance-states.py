@@ -19,10 +19,10 @@ relay = Interface()
 
 # The `MINUTES_TO_WAIT` global variable is the number of minutes to wait for
 # a termination_date label to appear for the GCP instance.
-MINUTES_TO_WAIT = 4
+MINUTES_TO_WAIT = 5
 
 # The Indefinite lifetime constant
-INDEFINITE = 'indefinite'
+INDEFINITE = ['indefinite', 'infinity', '0']
 
 WORKHOURS_DEFAULT = (7, 18)
 RUNSCHEDULE_DEFAULT = 'weekdays'
@@ -47,7 +47,11 @@ STOPPED_UNTIL_LABEL = 'stopped_until'
 REQUIRED_LABELS = json.loads(relay.get(D.requiredLabels))
 TERMINATE_DAYS = relay.get(D.terminateDays)
 INSTANCES = relay.get(D.instances)
+LOG_LEVEL = relay.get(D.logLevel)
 
+def verbose_log(msg):
+    if LOG_LEVEL == 'verbose':
+        print(msg)
 
 def get_label(gcp_instance, label_name):
     """
@@ -71,7 +75,7 @@ def timenow_with_utc():
     time = time.replace(tzinfo=datetime.timezone.utc)
     return time
 
-def validate_lifetime_value(lifetime_value):
+def parse_lifetime_value(lifetime_value):
     """
     :param lifetime_value: A string from your GCP instance.
 
@@ -89,12 +93,15 @@ def validate_lifetime_value(lifetime_value):
 
 def calculate_lifetime_delta(lifetime_tuple):
     """
-    :param lifetime_match: Resulting regex match object from validate_lifetime_value.
+    :param lifetime_match: Resulting regex match object from parse_lifetime_value.
     Check the value of the lifetime. If not indefinite convert the regex match from
-    `validate_lifetime_value` into a timedelta.
+    `parse_lifetime_value` into a timedelta.
     """
-    length = lifetime_tuple[0]
-    unit = lifetime_tuple[1]
+    try:
+        length = lifetime_tuple[0]
+        unit = lifetime_tuple[1]
+    except Exception as e:
+        raise ValueError('Invalid lifetime label tuple: "{0}" error: "{1}"'.format(lifetime_tuple,e))
     if unit is None:
         raise ValueError("Unable to parse the lifetime unit")
     if unit == 'w':
@@ -168,6 +175,42 @@ def get_workhours_times(workhours_value=None):
     endhour = int(toople[1])
     return (starthour, endhour)
 
+def validate_lifetime_value(val):
+    return val in INDEFINITE or parse_lifetime_value(val) is not None
+
+def validate_geo_value(val):
+    return val in TIMEZONES.keys()
+
+def validate_workhours_value(val):
+    return get_workhours_times(val) is not None
+
+def validate_runschedule_value(val):
+    return val in ['weekdays', 'daily', 'continuous']
+
+def validate_autostart_value(val):
+    return val in ['true', 'false']
+
+def validate_disabled_value(val):
+    return val in ['true', 'false']
+
+def validate_shutdown_type_value(val):
+    return val in ['shutdown', 'suspend']
+
+def validate_owner_value(val):
+    return bool(val and val.strip())
+
+def validate_termination_date_value(val):
+    try:
+        return get_iso_date(val) is not None
+    except Exception as e:
+        return False
+
+def validate_stopped_until_value(val):
+    try:
+        return get_iso_date(val) is not None
+    except Exception as e:
+        return False
+
 def required_labels_present(gcp_instance):
     """
     :param gpc_instance: a resource representing a GCP instance
@@ -179,6 +222,16 @@ def required_labels_present(gcp_instance):
         if get_label(gcp_instance, label) is None:
             raise ValueError("Missing label '{0}'".format(label))
     return True
+
+def validate_labels(gcp_instance):
+    if 'labels' not in gcp_instance.keys() or gcp_instance['labels'] is None:
+        raise Exception('No Labels defined')
+    required_labels_present(gcp_instance)
+    for label in gcp_instance['labels'].keys():
+        if 'validate_{0}_value'.format(label) in globals():
+            val = get_label(gcp_instance, label)
+            if not globals()['validate_{0}_value'.format(label)](val):
+               raise ValueError('Invalid {0} label value: "{1}"'.format(label, val))
 
 def should_be_started(gcp_instance):
     """
@@ -195,10 +248,7 @@ def should_be_started(gcp_instance):
     if disabled is not None and disabled.lower() == 'true':
         return (False, 'Disabled')
 
-    try:
-        required_labels_present(gcp_instance)
-    except ValueError as e:
-        return (False, 'Not starting: {0}'.format(e))
+    validate_labels(gcp_instance)
 
     timenow = timenow_with_utc()
     runschedule = get_label(gcp_instance, RUNSCHEDULE_LABEL)
@@ -207,14 +257,11 @@ def should_be_started(gcp_instance):
 
     launch_date = get_iso_date(gcp_instance['creationTimestamp'])
     lifetime = get_label(gcp_instance, LIFETIME_LABEL)
-    if lifetime is not None and lifetime != INDEFINITE:
-        lifetime_match = validate_lifetime_value(lifetime)
-        try:
-            end_date = launch_date + calculate_lifetime_delta(lifetime_match)
-            if end_date < timenow:
-                return (False, 'Lifetime elapsed on {0}'.format(end_date))
-        except ValueError as e:
-            return (False, 'Invalid lifetime label value: {0}'.format(e))
+    if lifetime is not None and lifetime not in INDEFINITE:
+        lifetime_match = parse_lifetime_value(lifetime)
+        end_date = launch_date + calculate_lifetime_delta(lifetime_match)
+        if end_date < timenow:
+            return (False, 'Lifetime elapsed on {0}'.format(end_date.strftime('%Y-%m-%d')))
 
     if is_current_worktime(get_workhours_times(workhours), geo, runschedule):
         stopped_until = get_label(gcp_instance, STOPPED_UNTIL_LABEL)
@@ -225,7 +272,7 @@ def should_be_started(gcp_instance):
         else:
             return (True, 'Within working hours')
 
-    return (False, 'No configuration for starting')
+    return (False, 'No conditions met to initiate start')
 
 def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
     """
@@ -245,11 +292,11 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
     timenow = timenow_with_utc()
 
     try:
-        required_labels_present(gcp_instance)
+        validate_labels(gcp_instance)
     except ValueError as e:
         if launch_date + timedelta(minutes=wait_time) < timenow:
             # Timed out waiting for a label, so go ahead and delete this instance.
-            return (launch_date, 'Invalid or missing labels after wait_time')
+            raise ValueError(e)
         return (None, 'Waiting for labels to propagate')
 
     disabled = get_label(gcp_instance, DISABLED_LABEL)
@@ -260,7 +307,7 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
     if stopped_until is not None:
         stop_date = get_iso_date(stopped_until)
         if stop_date > timenow:
-            return (timenow - timedelta(minutes=5), 'Stopped until {0}'.format(stop_date))
+            return (timenow - timedelta(minutes=5), 'Stopped until {0}'.format(stop_date.strftime('%Y-%m-%d')))
 
     runschedule = get_label(gcp_instance, RUNSCHEDULE_LABEL)
     workhours = get_label(gcp_instance, WORKHOURS_LABEL)
@@ -273,21 +320,35 @@ def get_termination_date(gcp_instance, wait_time=MINUTES_TO_WAIT):
 
     if termination_date is None:
         lifetime = get_label(gcp_instance, LIFETIME_LABEL)
-        if lifetime == INDEFINITE:
+        if lifetime in INDEFINITE:
             return (None, 'Indefinite lifetime')
         else:
-            lifetime_match = validate_lifetime_value(lifetime)
-            if not lifetime_match:
-                return (launch_date, 'Invalid lifetime label value')
-            try:
-                end_date = launch_date + calculate_lifetime_delta(lifetime_match)
-                return (end_date, 'Lifetime elapsed on {0}'.format(end_date))
-            except ValueError as e:
-                return (launch_date, 'Invalid lifetime label value: {0}'.format(e))
-    elif termination_date == INDEFINITE:
+            lifetime_match = parse_lifetime_value(lifetime)
+            end_date = launch_date + calculate_lifetime_delta(lifetime_match)
+            owner = get_label(gcp_instance, 'owner')
+            return (end_date, '{0} lifetime expires at {1}. Owner {2}'.format(lifetime, end_date.strftime('%Y-%m-%d'), owner))
+    elif termination_date in INDEFINITE:
         return (None, 'Indefinite lifetime')
     else:
-        return (get_iso_date(termination_date), 'Scheduled for termination on {0}'.format(get_iso_date(termination_date)))
+        return (get_iso_date(termination_date), 'Scheduled for termination on {0}'.format(termination_date))
+
+def get_shutdown(instance):
+    if get_label(instance, SHUTDOWN_TYPE_LABEL) == 'suspend':
+        action = 'Suspending'
+        append_list = 'to_suspend'
+    else:
+        action = 'Stopping'
+        append_list = 'to_terminate'
+    return (append_list, action)
+
+def get_start(instance):
+    if instance['status'] == 'SUSPENDED':
+        action = 'Resuming'
+        append_list = 'to_resume'
+    else:
+        action = 'Starting'
+        append_list = 'to_start'
+    return (append_list, action)
 
 def chunk_list(lst, n):
     """Yield successive n-sized chunks from lst."""
@@ -356,6 +417,7 @@ if __name__ == '__main__':
         "suspending": {},
         "starting": {},
         "resuming": {},
+        "expiring": {},
         "error": {}
     }
 
@@ -365,42 +427,46 @@ if __name__ == '__main__':
         try:
             (termination_date, reason) = get_termination_date(instance)
             if termination_date is not None:
+                action = None
                 if timenow > termination_date + timedelta(days=TERMINATE_DAYS):
+                    # Expired for longer than 14 days
+                    action = 'Deleting'
                     to_delete.append(instance)
-                    states['deleting'][instance['name']] = reason
-                    print('Deleting GCP instance {0}: {1}'.format(instance['name'], reason))
                 elif termination_date < timenow:
-                    if get_label(instance, SHUTDOWN_TYPE_LABEL) == 'suspend':
-                        to_suspend.append(instance)
-                        states['suspending'][instance['name']] = reason
-                    else:
-                        to_terminate.append(instance)
-                        states['stopping'][instance['name']] = reason
-                    print('Stopping GCP instance {0}: {1}'.format(instance['name'], reason))
+                    # Should be shut down
+                    (append_list, action) = get_shutdown(instance)
+                    locals()[append_list].append(instance)
                 else:
-                    print('GCP instance {0} will be considered for stopping at {1}'.format(instance['name'], termination_date))
+                    if termination_date < timenow + timedelta(days=1):
+                        # Instances expiring within 24 hours
+                        action = 'Expiring'
+                    else:
+                        verbose_log('{0}: {1}'.format(instance['name'], reason))
+                if action:
+                    states[action.lower()][instance['name']] = reason
+                    print('{0} {1}: {2}'.format(action, instance['name'], reason))
             else:
-                print('GCP instance {0} not considered for stopping : {1}'.format(instance['name'], reason))
+                verbose_log('{0} is running as expected: {1}'.format(instance['name'], reason))
         except Exception as e:
-            states['error'][instance['name']] = 'ERROR: {0}'.format(e)
-            print('GCP instance {0} not considered for stopping because of a processing error: {1}'.format(instance['name'], e))
+            (append_list, action) = get_shutdown(instance)
+            locals()[append_list].append(instance)
+            states['error'][instance['name']] = '{0}: {1}'.format(action, e)
+            print('{0} {1} due to a processing error: {2}'.format(action, instance['name'], e))
 
     stopped_instances = filter(lambda i: i['status'] == 'TERMINATED' or i['status'] == 'SUSPENDED', INSTANCES)
     for instance in stopped_instances:
         try:
             (should_start, reason) = should_be_started(instance)
             if should_start:
-                if instance['status'] == 'SUSPENDED':
-                    to_resume.append(instance)
-                    states['resuming'][instance['name']] = reason
-                else:
-                    to_start.append(instance)
-                    states['starting'][instance['name']] = reason
-                print('Starting GCP instance {0}: {1}'.format(instance['name'], reason))
+                (append_list, action) = get_start(instance)
+                locals()[append_list].append(instance)
+                states[action.lower()][instance['name']] = reason
+                print('{0} {1}: {2}'.format(action, instance['name'], reason))
+            else:
+                verbose_log('{0} is stopped as expected: {1}'.format(instance['name'], reason))
         except Exception as e:
-            states['error'][instance['name']] = 'ERROR: {0}'.format(e)
-            print('GCP instance {0} not considered for starting because of a processing error: {1}'.format(instance['name'], e))
-
+            states['error'][instance['name']] = 'Not starting: {0}'.format(e)
+            print('Not starting {0} due to a processing error: {1}'.format(instance['name'], e))
 
     relay.outputs.set('to_terminate', to_terminate)
     relay.outputs.set('to_suspend', to_suspend)
@@ -411,4 +477,5 @@ if __name__ == '__main__':
         relay.outputs.set('slack_block', states_to_slack_block(states))
     except Exception as e:
         print('Unable to print slack_block: {0} , {1}'.format(states, e))
-        relay.outputs.set('slack_block', '[]')
+        block = '[{"type": "section","text": {"type": "mrkdwn","text": "Failed to generate slack block: {0}"}}]'.format(e)
+        relay.outputs.set('slack_block', block)
