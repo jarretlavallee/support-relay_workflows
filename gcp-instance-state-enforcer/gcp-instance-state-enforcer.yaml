@@ -51,6 +51,9 @@ parameters:
   slackChannel:
     description: The channel to notify
     default: '#team-support-gcp-notifications'
+  logLevel:
+    description: The log level to display
+    default: 'info'
 
 steps:
 - name: list-instances
@@ -66,8 +69,9 @@ steps:
     instances: ${outputs.'list-instances'.instances}
     requiredLabels: ${parameters.requiredLabels}
     terminateDays: ${parameters.terminateDays}
+    logLevel: ${parameters.logLevel}
 # The current version of this script can be found in the `raw` link at https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/184aa956fa681b82e80b081e0ccb00c1af6aabe0/get-instance-states.py
+  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/7c077ef7a0ca6cf619c965d7ff19d9eef1f25591/get-instance-states.py
 
 - name: stop-instances
   when: ${outputs.'identify-instance-states'.to_terminate != []}
