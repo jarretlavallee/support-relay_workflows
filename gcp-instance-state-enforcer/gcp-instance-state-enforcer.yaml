@@ -1,7 +1,7 @@
 apiVersion: v1
-summary: Stop, Start, Delete GCP instances based on the tags
-description: This workflow looks at all of the GCP instances in a given account and zone and enforces the power state based on the tags.
-homepage: https://github.com/puppetlabs/relay-workflows/tree/master/gcp-instance-reaper
+summary: Stop, Start, Delete GCP instances based on the labels
+description: This workflow looks at all of the GCP instances in a given account and zone and enforces the power state based on the labels.
+homepage: https://github.com/puppetlabs/support-relay_workflows/tree/main/gcp-instance-state-enforcer
 tags:
   - cost optimization
 
@@ -70,8 +70,7 @@ steps:
     requiredLabels: ${parameters.requiredLabels}
     terminateDays: ${parameters.terminateDays}
     logLevel: ${parameters.logLevel}
-# The current version of this script can be found in the `raw` link at https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/7c077ef7a0ca6cf619c965d7ff19d9eef1f25591/get-instance-states.py
+  inputFile: https://raw.githubusercontent.com/puppetlabs/support-relay_workflows/main/gcp-instance-state-enforcer/get-instance-states.py
 
 - name: stop-instances
   when: ${outputs.'identify-instance-states'.to_terminate != []}
@@ -113,7 +112,7 @@ steps:
   spec:
     google: *google
     instances: ${outputs.'identify-instance-states'.to_resume}
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/186afeb7e5979748985a5d01038de952eef94035/gcp-instance-resume.py
+  inputFile: https://raw.githubusercontent.com/puppetlabs/support-relay_workflows/main/gcp-instance-state-enforcer/gcp-instance-resume.py
 
 - name: suspend-instances
   when: ${outputs.'identify-instance-states'.to_suspend != []}
@@ -122,7 +121,7 @@ steps:
   spec:
     google: *google
     instances: ${outputs.'identify-instance-states'.to_suspend}
-  inputFile: https://gist.github.com/jarretlavallee/cecbab051b39cddaaaffa1fe727a3f72/raw/186afeb7e5979748985a5d01038de952eef94035/gcp-instance-suspend.py
+  inputFile: https://raw.githubusercontent.com/puppetlabs/support-relay_workflows/main/gcp-instance-state-enforcer/gcp-instance-suspend.py
 
 - name: slack-notification
   image: relaysh/slack-step-message-send
