@@ -108,20 +108,18 @@ steps:
 - name: resume-instances
   when: ${outputs.'identify-instance-states'.to_resume != []}
   dependsOn: identify-instance-states
-  image: relaysh/gcp-step-instance-start
+  image: relaysh/gcp-step-instance-resume
   spec:
     google: *google
     instances: ${outputs.'identify-instance-states'.to_resume}
-  inputFile: https://raw.githubusercontent.com/puppetlabs/support-relay_workflows/main/gcp-instance-state-enforcer/gcp-instance-resume.py
 
 - name: suspend-instances
   when: ${outputs.'identify-instance-states'.to_suspend != []}
   dependsOn: identify-instance-states
-  image: relaysh/gcp-step-instance-stop
+  image: relaysh/gcp-step-instance-suspend
   spec:
     google: *google
     instances: ${outputs.'identify-instance-states'.to_suspend}
-  inputFile: https://raw.githubusercontent.com/puppetlabs/support-relay_workflows/main/gcp-instance-state-enforcer/gcp-instance-suspend.py
 
 - name: slack-notification
   image: relaysh/slack-step-message-send
